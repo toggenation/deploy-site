@@ -17,8 +17,8 @@ This script deploys a Wordpress site with the following
 
 ## Requires
 
-pwgen
-certbot with nginx plugin
+* pwgen
+* certbot with nginx plugin
 
 
 
