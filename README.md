@@ -15,6 +15,12 @@ This script deploys a Wordpress site with the following
 	* Database user details
 	* wp-config security salts
 
+## Requires
+
+pwgen
+certbot with nginx plugin
+
+
 
 ## How to use
 
@@ -35,6 +41,7 @@ NEW_DOMAIN=exampledomain.com.au
 Run the script 
 
 ```sh
+export MYSQL_ROOT_PASS=MySuperSecretMySQLRootPassord
 ./deploy-site.sh
 ```
 
