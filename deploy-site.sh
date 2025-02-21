@@ -1,16 +1,21 @@
+#!/bin/bash
 
-source ./env
 
-echo Adding new linux user: $NEW_USER
-echo Add new site: $NEW_DOMAIN
+. ./.env
+
+echo New linux user: $NEW_USER
+echo New site: $NEW_DOMAIN
 
 if [ -z "$MYSQL_ROOT_PASS" ];
 then
-	echo You need specify \$MYSQL_ROOT_PASS="<PasswordHere>"
+	echo You need specify MYSQL_ROOT_PASS="<PasswordHere>" in .env
 	exit
 fi
 
 function createUser {
+
+	echo Creating user "$1"
+
 	useradd -c "created `date +'%Y-%m-%d'`" -m "$1"
 
 	mkdir -p $WWW_DIR/{tmp,uploads,web}
@@ -22,6 +27,8 @@ function createUser {
 
 function removeAll {
 
+	echo "Removing All"
+
 	[ -f $NEW_NGINX_CONF ] && (
 		echo Removing $NEW_NGINX_CONF
 		rm -rf $NEW_NGINX_CONF
@@ -30,7 +37,7 @@ function removeAll {
 	[ -f $NEW_PHPFPM_CONF ] && (
 		echo Removing $NEW_PHPFPM_CONF
 		rm -rf $NEW_PHPFPM_CONF
-		systemctl restart php-fpm
+		systemctl restart $PHPFPM_SERVICE
 	)
 
 	id $1 > /dev/null 2>&1 && userdel -r $1
@@ -46,7 +53,6 @@ function removeAll {
 }	
 
 function checkFile {
-
 	echo Check for $1
 	if [ -f "$1" ]
 	then
@@ -61,6 +67,7 @@ function checkFile {
 
 function deleteDB {
 
+echo "Deleting DB"
 
 mysql -uroot -p$MYSQL_ROOT_PASS <<MYSQL_SCRIPT
 DROP DATABASE $MYSQL_DB;
@@ -76,6 +83,7 @@ echo "Username:   $MYSQL_USER"
 
 function createDB {
 	
+echo Creating DB
 
 mysql -uroot -p$MYSQL_ROOT_PASS <<MYSQL_SCRIPT
 CREATE DATABASE $MYSQL_DB;
@@ -108,18 +116,27 @@ function checkUser {
 	fi
 }
 
+function createPhpFpmConf {
+	echo Creating php-fpm conf
+	sed $PHPFPM_CONF_TEMPLATE -e "s/${NEW_USER_TAG}/$NEW_USER/g" > $NEW_PHPFPM_CONF	
+}
+
+function createNginxConf {
+	echo Creating nginx conf	
+	sed $NGINX_CONF_TEMPLATE -e "s/${NEW_DOMAIN_TAG}/$NEW_DOMAIN/g" -e "s/${NEW_USER_TAG}/$NEW_USER/g" > $NEW_NGINX_CONF
+
+	ln -sf $NEW_NGINX_CONF $SITES_ENABLED/
+}
+
 function createConfFiles {
-
-sed $PHPFPM_CONF_TEMPLATE -e "s/${NEW_USER_TAG}/$NEW_USER/g" > $NEW_PHPFPM_CONF
-
-sed $NGINX_CONF_TEMPLATE -e "s/${NEW_DOMAIN_TAG}/$NEW_DOMAIN/g" -e "s/${NEW_USER_TAG}/$NEW_USER/g" > $NEW_NGINX_CONF
-
+	createPhpFpmConf
+	createNginxConf
 }
 
 
 function deployWordpress {
 
-wget -qO- $WORDPRESS_LATEST | tar -zx --strip-components=1 -C $WWW_DIR/web
+wget -qO- $WORDPRESS_LATEST | tar -zx --strip-components=1 -C $WWW_DIR/web > /dev/null 2>&1
 
 cp $WP_CONFIG_SAMPLE $WP_CONFIG_TMP
 sed -i "s/^define.*DB_NAME.*$/define('DB_NAME', '$MYSQL_DB');/" $WP_CONFIG_TMP
@@ -134,12 +151,12 @@ rm $WP_CONFIG_TMP
 function reloadServices {
 
 	systemctl reload nginx
-	systemctl reload php-fpm
+	systemctl reload $PHPFPM_SERVICE
 }
 
 function deployTheme {
 
-	unzip -d $THEME_DIR $THEME	
+	unzip -d $THEME_DIR $THEME > /dev/null 2>&1
 
 }
 
