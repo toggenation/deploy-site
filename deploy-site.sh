@@ -31,7 +31,8 @@ function removeAll {
 
 	[ -f $NEW_NGINX_CONF ] && (
 		echo Removing $NEW_NGINX_CONF
-		rm -rf $NEW_NGINX_CONF
+		rm -f $NEW_NGINX_CONF
+	        rm -f $NEW_NGINX_CONF $SITES_ENABLED/$NEW_USER.conf
 		systemctl restart nginx
 	)
 	[ -f $NEW_PHPFPM_CONF ] && (
@@ -69,7 +70,7 @@ function deleteDB {
 
 echo "Deleting DB"
 
-mysql -uroot -p$MYSQL_ROOT_PASS <<MYSQL_SCRIPT
+MYSQL_PWD="$MYSQL_PWD" mysql -uroot <<MYSQL_SCRIPT
 DROP DATABASE $MYSQL_DB;
 DROP USER '$MYSQL_USER'@'localhost';
 FLUSH PRIVILEGES;
@@ -85,7 +86,7 @@ function createDB {
 	
 echo Creating DB
 
-mysql -uroot -p$MYSQL_ROOT_PASS <<MYSQL_SCRIPT
+MYSQL_PWD="$MYSQL_PWD" mysql -uroot <<MYSQL_SCRIPT
 CREATE DATABASE $MYSQL_DB;
 CREATE USER '$MYSQL_USER'@'localhost' IDENTIFIED BY '$MYSQL_PASS';
 GRANT ALL PRIVILEGES ON $MYSQL_DB.* TO '$MYSQL_USER'@'localhost';
@@ -136,16 +137,25 @@ function createConfFiles {
 
 function deployWordpress {
 
-wget -qO- $WORDPRESS_LATEST | tar -zx --strip-components=1 -C $WWW_DIR/web > /dev/null 2>&1
+	sudo -u $NEW_USER wp core download --path=$WWW_DIR/web
 
-cp $WP_CONFIG_SAMPLE $WP_CONFIG_TMP
-sed -i "s/^define.*DB_NAME.*$/define('DB_NAME', '$MYSQL_DB');/" $WP_CONFIG_TMP
-sed -i "s/^define.*DB_USER.*$/define('DB_USER', '$MYSQL_USER');/" $WP_CONFIG_TMP
-sed -i "s/^define.*DB_PASSWORD.*$/define('DB_PASSWORD', '$MYSQL_PASS');/" $WP_CONFIG_TMP
+	sudo -u $NEW_USER wp config create --path=$WWW_DIR/web \
+	       	--dbname=$MYSQL_DB \
+		--dbuser=$MYSQL_USER \
+		--dbpass=$MYSQL_PASS \
+		--dbprefix=$WP_TABLE_PREFIX
 
-SALTS=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
-cat $WP_CONFIG_TMP | sed "/AUTH_KEY/,/NONCE_SALT/c $(echo $SALTS)" | sed 's/;\sdefine/;\ndefine/g' > $WP_CONFIG
-rm $WP_CONFIG_TMP 
+#	wget -qO- $WORDPRESS_LATEST | tar -zx --strip-components=1 -C $WWW_DIR/web > /dev/null 2>&1
+
+#cp $WP_CONFIG_SAMPLE $WP_CONFIG_TMP
+#sed -i "s/^define.*DB_NAME.*$/define('DB_NAME', '$MYSQL_DB');/" $WP_CONFIG_TMP
+#sed -i "s/^define.*DB_USER.*$/define('DB_USER', '$MYSQL_USER');/" $WP_CONFIG_TMP
+#sed -i "s/^define.*DB_PASSWORD.*$/define('DB_PASSWORD', '$MYSQL_PASS');/" $WP_CONFIG_TMP
+
+
+#SALTS=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
+#cat $WP_CONFIG_TMP | sed "/AUTH_KEY/,/NONCE_SALT/c $(echo $SALTS)" | sed 's/;\sdefine/;\ndefine/g' > $WP_CONFIG
+#rm $WP_CONFIG_TMP 
 
 }
 function reloadServices {
@@ -204,7 +214,7 @@ function changeOwner {
 
 if [ ! -d /etc/letsencrypt/live/$NEW_DOMAIN ];
 then
-	getCert
+       	getCert
 fi
 
 if [ "$1" = "remove" ];
@@ -223,8 +233,8 @@ checkFile $NEW_PHPFPM_CONF
 
 createConfFiles
 deployWordpress
-deployTheme
-deployChildTheme
+# deployTheme
+# deployChildTheme
 changeOwner
 reloadServices
 
