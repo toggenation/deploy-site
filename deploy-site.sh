@@ -3,12 +3,12 @@
 
 . ./.env
 
-echo New linux user: $NEW_USER
-echo New site: $NEW_DOMAIN
+echo Linux user: $NEW_USER
+echo Site: $NEW_DOMAIN
 
-if [ -z "$MYSQL_ROOT_PASS" ];
+if [ -z "$MYSQL_PWD" ];
 then
-	echo You need specify MYSQL_ROOT_PASS="<PasswordHere>" in .env
+	echo You need specify MYSQL_PWD="<PasswordHere>" in .env
 	exit
 fi
 
@@ -22,11 +22,9 @@ function createUser {
 	echo -e "This file needs to be here to enable\nnightly backup do not delete" > $WWW_DIR/backup
 
 	chown -Rv $1:$1 $WWW_DIR
-
 }
 
 function removeAll {
-
 	echo "Removing All"
 
 	[ -f $NEW_NGINX_CONF ] && (
@@ -78,8 +76,6 @@ MYSQL_SCRIPT
 echo "MySQL user deleted"
 echo "MySQL DB Deleted"
 echo "Username:   $MYSQL_USER"
-
-
 }
 
 function createDB {
@@ -136,7 +132,6 @@ function createConfFiles {
 
 
 function deployWordpress {
-
 	sudo -u $NEW_USER wp core download --path=$WWW_DIR/web
 
 	sudo -u $NEW_USER wp config create --path=$WWW_DIR/web \
@@ -145,21 +140,19 @@ function deployWordpress {
 		--dbpass=$MYSQL_PASS \
 		--dbprefix=$WP_TABLE_PREFIX
 
-#	wget -qO- $WORDPRESS_LATEST | tar -zx --strip-components=1 -C $WWW_DIR/web > /dev/null 2>&1
+	sudo -u $NEW_USER wp core install --path=$WWW_DIR/web \
+		 --url=$NEW_DOMAIN \
+		 --title=$SITE_NAME \
+		 --admin_user=$WP_ADMIN_USER \
+ 		 --admin_email=$WP_ADMIN_EMAIL
 
-#cp $WP_CONFIG_SAMPLE $WP_CONFIG_TMP
-#sed -i "s/^define.*DB_NAME.*$/define('DB_NAME', '$MYSQL_DB');/" $WP_CONFIG_TMP
-#sed -i "s/^define.*DB_USER.*$/define('DB_USER', '$MYSQL_USER');/" $WP_CONFIG_TMP
-#sed -i "s/^define.*DB_PASSWORD.*$/define('DB_PASSWORD', '$MYSQL_PASS');/" $WP_CONFIG_TMP
-
-
-#SALTS=$(curl -s https://api.wordpress.org/secret-key/1.1/salt/)
-#cat $WP_CONFIG_TMP | sed "/AUTH_KEY/,/NONCE_SALT/c $(echo $SALTS)" | sed 's/;\sdefine/;\ndefine/g' > $WP_CONFIG
-#rm $WP_CONFIG_TMP 
-
+#	sudo -u $NEW_USER wp --path=$WWW_DIR/web user create \
+#		$WP_ADMIN_USER $WP_ADMIN_EMAIL \
+#		--role=administrator \
+#		--user_pass=$WP_ADMIN_PW
 }
 function reloadServices {
-
+	echo Restarting services
 	systemctl reload nginx
 	systemctl reload $PHPFPM_SERVICE
 }
@@ -223,14 +216,12 @@ then
 	removeAll $NEW_USER
 fi
 createDB
-#sleep 5
+# sleep 5
 # deleteDB $NEW_USER
 checkUser $NEW_USER
 createUser $NEW_USER
 checkFile $NEW_NGINX_CONF
 checkFile $NEW_PHPFPM_CONF
-
-
 createConfFiles
 deployWordpress
 # deployTheme
