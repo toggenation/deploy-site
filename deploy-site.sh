@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 . ./.env
 
 echo Linux user: $NEW_USER
@@ -13,7 +12,6 @@ then
 fi
 
 function createUser {
-
 	echo Creating user "$1"
 
 	useradd -c "created `date +'%Y-%m-%d'`" -m "$1"
@@ -61,7 +59,6 @@ function checkFile {
 
 		echo File $1 not found continuing...
 	fi
-	
 }
 
 function deleteDB {
@@ -145,12 +142,8 @@ function deployWordpress {
 		 --title=$SITE_NAME \
 		 --admin_user=$WP_ADMIN_USER \
  		 --admin_email=$WP_ADMIN_EMAIL
-
-#	sudo -u $NEW_USER wp --path=$WWW_DIR/web user create \
-#		$WP_ADMIN_USER $WP_ADMIN_EMAIL \
-#		--role=administrator \
-#		--user_pass=$WP_ADMIN_PW
 }
+
 function reloadServices {
 	echo Restarting services
 	systemctl reload nginx
@@ -158,17 +151,12 @@ function reloadServices {
 }
 
 function deployTheme {
-
 	unzip -d $THEME_DIR $THEME > /dev/null 2>&1
-
 }
 
 function deployChildTheme {
-	
-
 	mkdir $CHILD_THEME_DIR
 	chown $NEW_USER:$NEW_USER $CHILD_THEME_DIR
-
 
 cat > $CHILD_THEME_DIR/style.css << ENDOFSTYLES
 /*
@@ -194,14 +182,10 @@ function my_theme_enqueue_styles() {
 add_action( 'wp_enqueue_scripts', 'my_theme_enqueue_styles' );
 
 ENDOFFUNCTIONS
-
-
 }
 
 function changeOwner {
-
 	chown -R $NEW_USER:$NEW_USER $WWW_DIR
-
 }
 
 
@@ -215,6 +199,7 @@ then
 	echo Removing all
 	removeAll $NEW_USER
 fi
+
 createDB
 # sleep 5
 # deleteDB $NEW_USER
