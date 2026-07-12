@@ -7,20 +7,32 @@ echo Site: $NEW_DOMAIN
 
 if [ -z "$MYSQL_PWD" ];
 then
-	echo You need specify MYSQL_PWD="<PasswordHere>" in .env
+	echo You need to specify the MYSQL_PWD="<PasswordHere>" in .env
 	exit
 fi
 
 function createUser {
-	echo Creating user "$1"
+	echo Creating user "$1" and site dir
 
 	useradd -c "created `date +'%Y-%m-%d'`" -m "$1"
+    echo Add nginx user www-data to "$1" group to allow nginx to read user dir
+    usermod -a -G "$1" www-data
 
-	mkdir -p $WWW_DIR/{tmp,uploads,web}
+	mkdir -p $WWW_DIR/{tmp,uploads,web,log}
 	echo -e "This file needs to be here to enable\nnightly backup do not delete" > $WWW_DIR/backup
 
+	echo Changing site dir ownership to "$1"
 	chown -Rv $1:$1 $WWW_DIR
+	echo Setting site dir to 750 perms
+	chmod -Rv 750 $WWW_DIR
 }
+
+function removeUser {
+    echo Remove user "$1"
+	id $1 > /dev/null 2>&1 && userdel -r $1
+}
+
+	
 
 function removeAll {
 	echo "Removing All"
@@ -37,8 +49,10 @@ function removeAll {
 		systemctl restart $PHPFPM_SERVICE
 	)
 
-	id $1 > /dev/null 2>&1 && userdel -r $1
-	[ -d $WWW_DIR/web ] && ( 
+    removeUser "$1"
+
+    echo Remove "$WWW_DIR" web root
+    [ -d $WWW_DIR/web ] && ( 
 		echo Removing $WWW_DIR
 		rm -rf $WWW_DIR
 	)
@@ -111,15 +125,15 @@ function checkUser {
 }
 
 function createPhpFpmConf {
-	echo Creating php-fpm conf
-	sed $PHPFPM_CONF_TEMPLATE -e "s/${NEW_USER_TAG}/$NEW_USER/g" > $NEW_PHPFPM_CONF	
+    echo Creating php-fpm conf for $NEW_USER
+    envsubst '$NEW_USER' < "$PHPFPM_CONF_TEMPLATE" > "$NEW_PHPFPM_CONF"
 }
 
 function createNginxConf {
-	echo Creating nginx conf	
-	sed $NGINX_CONF_TEMPLATE -e "s/${NEW_DOMAIN_TAG}/$NEW_DOMAIN/g" -e "s/${NEW_USER_TAG}/$NEW_USER/g" > $NEW_NGINX_CONF
+    echo Creating nginx conf for $NEW_USER	
+    envsubst '$NEW_USER $NEW_DOMAIN' < "$NGINX_CONF_TEMPLATE" > "$NEW_NGINX_CONF"
 
-	ln -sf $NEW_NGINX_CONF $SITES_ENABLED/
+    ln -sf $NEW_NGINX_CONF $SITES_ENABLED/
 }
 
 function createConfFiles {
@@ -188,6 +202,11 @@ function changeOwner {
 	chown -R $NEW_USER:$NEW_USER $WWW_DIR
 }
 
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Error: This script must be run as root." >&2
+    echo "Please run with: sudo $0" >&2
+    exit 1
+fi
 
 if [ ! -d /etc/letsencrypt/live/$NEW_DOMAIN ];
 then
