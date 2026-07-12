@@ -4,6 +4,7 @@
 
 echo Linux user: $NEW_USER
 echo Site: $NEW_DOMAIN
+echo WP Table Prefix: $WP_TABLE_PREFIX
 
 if [ -z "$MYSQL_PWD" ];
 then
@@ -11,54 +12,66 @@ then
 	exit
 fi
 
+function createWebRoot {
+    echo Creating $WWW_DIR and sub folders
+ 	mkdir -p $WWW_DIR/{tmp,uploads,web,log}
+	echo -e "This file needs to be here to enable\nnightly backup do not delete" > $WWW_DIR/backup
+}
+
+function createLogFiles {
+    echo Create empty log files
+    [ -d $WWW_DIR/log ] && touch "$WWW_DIR/log/{access,error,access_php-fpm,error_php-fpm,slow_php-fpm}.log"
+
+    echo Setting permissions on log files
+    chown -R $1:$1 $WWW_DIR/log
+    chmod -R 640 $WWW_DIR/log
+}
+
 function createUser {
 	echo Creating user "$1" and site dir
-
 	useradd -c "created `date +'%Y-%m-%d'`" -m "$1"
     echo Add nginx user www-data to "$1" group to allow nginx to read user dir
     usermod -a -G "$1" www-data
-
-	mkdir -p $WWW_DIR/{tmp,uploads,web,log}
-	echo -e "This file needs to be here to enable\nnightly backup do not delete" > $WWW_DIR/backup
-
-	echo Changing site dir ownership to "$1"
-	chown -Rv $1:$1 $WWW_DIR
-	echo Setting site dir to 750 perms
-	chmod -Rv 750 $WWW_DIR
 }
 
 function removeUser {
     echo Remove user "$1"
 	id $1 > /dev/null 2>&1 && userdel -r $1
+    groupdel -f "$1"
 }
 
-	
-
-function removeAll {
-	echo "Removing All"
-
+function removeNginxConf {
 	[ -f $NEW_NGINX_CONF ] && (
 		echo Removing $NEW_NGINX_CONF
 		rm -f $NEW_NGINX_CONF
 	        rm -f $NEW_NGINX_CONF $SITES_ENABLED/$NEW_USER.conf
 		systemctl restart nginx
 	)
-	[ -f $NEW_PHPFPM_CONF ] && (
+}
+function removePhpFpmConf {
+		[ -f $NEW_PHPFPM_CONF ] && (
 		echo Removing $NEW_PHPFPM_CONF
 		rm -rf $NEW_PHPFPM_CONF
 		systemctl restart $PHPFPM_SERVICE
 	)
+}
 
-    removeUser "$1"
-
+function removeSiteDir {
     echo Remove "$WWW_DIR" web root
     [ -d $WWW_DIR/web ] && ( 
 		echo Removing $WWW_DIR
 		rm -rf $WWW_DIR
 	)
+}
 
-	echo Deleting DB
+function removeAll {
+	echo "Removing All"
+	removeNginxConf
+	removePhpFpmConf
+	removeUser "$1"
+	removeSiteDir 
 	deleteDB
+
 	echo End of remove all. exiting
 	exit 0
 }	
@@ -77,16 +90,17 @@ function checkFile {
 
 function deleteDB {
 
-echo "Deleting DB"
+    echo "Deleting DB"
 
-MYSQL_PWD="$MYSQL_PWD" mysql -uroot <<MYSQL_SCRIPT
-DROP DATABASE $MYSQL_DB;
-DROP USER '$MYSQL_USER'@'localhost';
-FLUSH PRIVILEGES;
-MYSQL_SCRIPT
-echo "MySQL user deleted"
-echo "MySQL DB Deleted"
-echo "Username:   $MYSQL_USER"
+	MYSQL_PWD="$MYSQL_PWD" mysql -uroot <<-MYSQL_SCRIPT
+	DROP DATABASE $MYSQL_DB;
+	DROP USER '$MYSQL_USER'@'localhost';
+	FLUSH PRIVILEGES;
+	MYSQL_SCRIPT
+    
+    echo "MySQL user deleted"
+    echo "MySQL DB Deleted"
+    echo "Username:   $MYSQL_USER"
 }
 
 function createDB {
@@ -146,7 +160,7 @@ function deployWordpress {
 	sudo -u $NEW_USER wp core download --path=$WWW_DIR/web
 
 	sudo -u $NEW_USER wp config create --path=$WWW_DIR/web \
-	       	--dbname=$MYSQL_DB \
+		--dbname=$MYSQL_DB \
 		--dbuser=$MYSQL_USER \
 		--dbpass=$MYSQL_PASS \
 		--dbprefix=$WP_TABLE_PREFIX
@@ -156,6 +170,9 @@ function deployWordpress {
 		 --title=$SITE_NAME \
 		 --admin_user=$WP_ADMIN_USER \
  		 --admin_email=$WP_ADMIN_EMAIL
+
+	echo WP Admin User: $WP_ADMIN_USER
+	echo WP Admin Email: $WP_ADMIN_EMAIL
 }
 
 function reloadServices {
@@ -199,7 +216,26 @@ ENDOFFUNCTIONS
 }
 
 function changeOwner {
-	chown -R $NEW_USER:$NEW_USER $WWW_DIR
+    echo Set perms on "$WWW_DIR"
+    if [ -z "$WWW_DIR" ];
+    then
+        echo Directory variable WWW_DIR empty. Exiting...
+        exit 1
+    fi
+
+    if [ ! -d "$WWW_DIR/web" ];
+    then 
+        echo Directory $WWW_DIR/web missing cannot set ownershipe and perms...
+        exit 1
+    fi
+
+	chown -R $NEW_USER:$NEW_USER "$WWW_DIR"
+
+    # drwxr_x___
+    # frw_r_____
+
+    find "$WWW_DIR" -type d -exec chmod 750 {} \;
+    find "$WWW_DIR" -type f -exec chmod 640 {} \;
 }
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -224,12 +260,16 @@ createDB
 # deleteDB $NEW_USER
 checkUser $NEW_USER
 createUser $NEW_USER
+
+createWebRoot $NEW_USER
+creatLogFiles $NEW_USER
+
 checkFile $NEW_NGINX_CONF
 checkFile $NEW_PHPFPM_CONF
 createConfFiles
+changeOwner
 deployWordpress
 # deployTheme
 # deployChildTheme
-changeOwner
 reloadServices
 
