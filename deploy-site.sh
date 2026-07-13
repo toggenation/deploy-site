@@ -3,7 +3,8 @@
 . ./.env
 
 echo Linux user: $NEW_USER
-echo Site: $NEW_DOMAIN
+echo Domain: $NEW_DOMAIN
+echo Site name: $SITE_NAME
 echo WP Table Prefix: $WP_TABLE_PREFIX
 
 if [ -z "$MYSQL_PWD" ];
@@ -13,18 +14,14 @@ then
 fi
 
 function createWebRoot {
-    echo Creating $WWW_DIR and sub folders
- 	mkdir -p $WWW_DIR/{tmp,uploads,web,log}
+	echo Creating $WWW_DIR and sub folders
+	mkdir -p $WWW_DIR/{tmp,uploads,web,log}
 	echo -e "This file needs to be here to enable\nnightly backup do not delete" > $WWW_DIR/backup
 }
 
 function createLogFiles {
     echo Create empty log files
-    [ -d $WWW_DIR/log ] && touch "$WWW_DIR/log/{access,error,access_php-fpm,error_php-fpm,slow_php-fpm}.log"
-
-    echo Setting permissions on log files
-    chown -R $1:$1 $WWW_DIR/log
-    chmod -R 640 $WWW_DIR/log
+    [ -d "$WWW_DIR/log" ] && touch $WWW_DIR/log/{access,error,access_php-fpm,error_php-fpm,slow_php-fpm}.log
 }
 
 function createUser {
@@ -48,6 +45,16 @@ function removeNginxConf {
 		systemctl restart nginx
 	)
 }
+
+function removeLogRotateConf {
+	[ -f $NEW_LOGROTATE_CONF ] && (
+		echo Removing $NEW_LOGROTATE_CONF
+		rm -f $NEW_LOGROTATE_CONF
+
+		systemctl restart logrotate.timer
+	)
+}
+
 function removePhpFpmConf {
 		[ -f $NEW_PHPFPM_CONF ] && (
 		echo Removing $NEW_PHPFPM_CONF
@@ -68,6 +75,7 @@ function removeAll {
 	echo "Removing All"
 	removeNginxConf
 	removePhpFpmConf
+	removeLogRotateConf
 	removeUser "$1"
 	removeSiteDir 
 	deleteDB
@@ -83,39 +91,61 @@ function checkFile {
 		echo File found exiting...
 		exit 1
 	else 
-
 		echo File $1 not found continuing...
 	fi
 }
 
 function deleteDB {
-
-    echo "Deleting DB"
+	echo "Deleting DB"
 
 	MYSQL_PWD="$MYSQL_PWD" mysql -uroot <<-MYSQL_SCRIPT
 	DROP DATABASE $MYSQL_DB;
-	DROP USER '$MYSQL_USER'@'localhost';
+	DROP USER '$MYSQL_USER'@'$DB_HOST';
 	FLUSH PRIVILEGES;
 	MYSQL_SCRIPT
     
-    echo "MySQL user deleted"
-    echo "MySQL DB Deleted"
-    echo "Username:   $MYSQL_USER"
+	echo "MySQL user deleted"
+	echo "MySQL DB Deleted"
+	echo "Username:   $MYSQL_USER"
 }
 
-function createDB {
-	
-echo Creating DB
+function checkDbAndUser {
+	echo Checking for pre existing DB user and DB
 
-MYSQL_PWD="$MYSQL_PWD" mysql -uroot <<MYSQL_SCRIPT
-CREATE DATABASE $MYSQL_DB;
-CREATE USER '$MYSQL_USER'@'localhost' IDENTIFIED BY '$MYSQL_PASS';
-GRANT ALL PRIVILEGES ON $MYSQL_DB.* TO '$MYSQL_USER'@'localhost';
-FLUSH PRIVILEGES;
-MYSQL_SCRIPT
-echo "MySQL user created."
-echo "Username:   $MYSQL_USER"
-echo "Password:   $MYSQL_PASS"
+	DB_EXISTS=`MYSQL_PWD="$MYSQL_PWD" mysql -u root -sse "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name = '$MYSQL_DB'"`
+
+	DB_USER_EXISTS=`MYSQL_PWD="$MYSQL_PWD" mysql -u root -sse "SELECT EXISTS(SELECT 1 FROM mysql.user WHERE User = '$MYSQL_USER' AND Host = '$DB_HOST')"`
+
+	[ "$DB_EXISTS" == "1" ] && echo DB Exists: $MYSQL_DB
+	[ "$DB_USER_EXISTS" == "1" ] && echo DB User Exists: \'$MYSQL_USER\'@\'$DB_HOST\'
+
+	if [ "$DB_USER_EXISTS" == "1" -o "$DB_EXISTS" == "1" ];
+	then
+		echo Cannot deploy site with a pre-existing DB or DB User. 
+		echo Please run \`$(basename -- "$0") remove\` or edit \`.env\`
+		echo Exiting...
+		exit 1;
+	fi
+}
+	
+function createDB {
+	echo Creating DB
+
+	MYSQL_PWD="$MYSQL_PWD" mysql -uroot <<-MYSQL_SCRIPT
+	CREATE DATABASE $MYSQL_DB 
+  		CHARACTER SET utf8mb4
+    	COLLATE utf8mb4_unicode_520_ci;
+
+	CREATE USER '$MYSQL_USER'@'$DB_HOST' IDENTIFIED BY '$MYSQL_PASS';
+
+	GRANT ALL PRIVILEGES ON $MYSQL_DB.* TO '$MYSQL_USER'@'$DB_HOST';
+
+	FLUSH PRIVILEGES;
+	MYSQL_SCRIPT
+
+	echo "MySQL user created."
+	echo "Username:   $MYSQL_USER"
+	echo "Password:   $MYSQL_PASS"
 }
 
 function getCert {
@@ -130,12 +160,16 @@ function checkUser {
 	
 	if [ $? -eq 1 ] 
 	then
-		
-		echo User does not exist ok to continue
+		echo User "$1" does not exist ok to continue
 	else 
 		echo User $1 exists. Exiting...
 		exit 1
 	fi
+}
+
+function createLogRotateConf {
+	echo Creating $NEW_LOGROTATE_CONF
+	envsubst '$NEW_USER $PHP_VERSION' < $LOGROTATE_CONF_TEMPLATE > $NEW_LOGROTATE_CONF
 }
 
 function createPhpFpmConf {
@@ -153,8 +187,8 @@ function createNginxConf {
 function createConfFiles {
 	createPhpFpmConf
 	createNginxConf
+	createLogRotateConf
 }
-
 
 function deployWordpress {
 	sudo -u $NEW_USER wp core download --path=$WWW_DIR/web
@@ -166,8 +200,8 @@ function deployWordpress {
 		--dbprefix=$WP_TABLE_PREFIX
 
 	sudo -u $NEW_USER wp core install --path=$WWW_DIR/web \
-		 --url=$NEW_DOMAIN \
-		 --title=$SITE_NAME \
+		 --url=$SITE_URL \
+		 --title="$SITE_NAME" \
 		 --admin_user=$WP_ADMIN_USER \
  		 --admin_email=$WP_ADMIN_EMAIL
 
@@ -215,7 +249,7 @@ add_action( 'wp_enqueue_scripts', 'my_theme_enqueue_styles' );
 ENDOFFUNCTIONS
 }
 
-function changeOwner {
+function setPermsOnSiteDirs {
     echo Set perms on "$WWW_DIR"
     if [ -z "$WWW_DIR" ];
     then
@@ -255,21 +289,31 @@ then
 	removeAll $NEW_USER
 fi
 
+checkDbAndUser
+
 createDB
-# sleep 5
-# deleteDB $NEW_USER
+
 checkUser $NEW_USER
+
 createUser $NEW_USER
 
 createWebRoot $NEW_USER
-creatLogFiles $NEW_USER
+
+createLogFiles $NEW_USER
 
 checkFile $NEW_NGINX_CONF
+
 checkFile $NEW_PHPFPM_CONF
+
 createConfFiles
-changeOwner
+
+setPermsOnSiteDirs
+
 deployWordpress
+
+# don't use this now
 # deployTheme
 # deployChildTheme
+
 reloadServices
 
