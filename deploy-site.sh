@@ -1,17 +1,14 @@
 #!/bin/bash
 
+# export all vars
+set -a
+
 . ./.env
 
 echo Linux user: $NEW_USER
 echo Domain: $NEW_DOMAIN
 echo Site name: $SITE_NAME
 echo WP Table Prefix: $WP_TABLE_PREFIX
-
-if [ -z "$MYSQL_PWD" ];
-then
-	echo You need to specify the MYSQL_PWD="<PasswordHere>" in .env
-	exit
-fi
 
 function createWebRoot {
 	echo Creating $WWW_DIR and sub folders
@@ -21,14 +18,15 @@ function createWebRoot {
 
 function createLogFiles {
     echo Create empty log files
-    [ -d "$WWW_DIR/log" ] && touch $WWW_DIR/log/{access,error,access_php-fpm,error_php-fpm,slow_php-fpm}.log
+    [ -d "$WWW_DIR/log" ] && \
+			touch $WWW_DIR/log/{access,error,access_php-fpm,error_php-fpm,slow_php-fpm}.log
 }
 
 function createUser {
 	echo Creating user "$1" and site dir
 	useradd -c "created `date +'%Y-%m-%d'`" -m "$1"
-    echo Add nginx user www-data to "$1" group to allow nginx to read user dir
-    usermod -a -G "$1" www-data
+	echo Add nginx user www-data to "$1" group to allow nginx to read user dir
+	usermod -a -G "$1" www-data
 }
 
 function removeUser {
@@ -79,7 +77,6 @@ function removeAll {
 	removeUser "$1"
 	removeSiteDir 
 	deleteDB
-
 	echo End of remove all. exiting
 	exit 0
 }	
@@ -223,7 +220,7 @@ function deployChildTheme {
 	mkdir $CHILD_THEME_DIR
 	chown $NEW_USER:$NEW_USER $CHILD_THEME_DIR
 
-cat > $CHILD_THEME_DIR/style.css << ENDOFSTYLES
+cat > $CHILD_THEME_DIR/style.css <<- ENDOFSTYLES
 /*
  Theme Name:     Divi Child
  Theme URI:      https://www.elegantthemes.com/gallery/divi/
@@ -278,6 +275,12 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+if [ -z "$MYSQL_PWD" ];
+then
+	echo You need to specify the MYSQL_PWD="<PasswordHere>" in .env
+	exit
+fi
+
 if [ ! -d /etc/letsencrypt/live/$NEW_DOMAIN ];
 then
        	getCert
@@ -288,6 +291,20 @@ then
 	echo Removing all
 	removeAll $NEW_USER
 fi
+
+
+echo -n "Do you want to deploy a site with the details above? [y|N] "
+read s
+
+case $s in
+	Y|y)
+		echo Continuing...
+		;;
+  *)
+		echo Exiting...
+		exit 1
+		;;
+esac
 
 checkDbAndUser
 
