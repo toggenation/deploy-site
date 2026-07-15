@@ -13,20 +13,21 @@ echo WP Table Prefix: $WP_TABLE_PREFIX
 function createWebRoot {
 	echo Creating $WWW_DIR and sub folders
 	mkdir -p $WWW_DIR/{tmp,uploads,web,log}
+
 	echo -e "This file needs to be here to enable\nnightly backup do not delete" > $WWW_DIR/backup
+  echo Changing owner of $WWW_DIR to $NEW_USER:$HOSTING_GROUP
+	chown $NEW_USER:$HOSTING_GROUP $WWW_DIR -R 
 }
 
 function createLogFiles {
     echo Create empty log files
     [ -d "$WWW_DIR/log" ] && \
-			touch $WWW_DIR/log/{access,error,access_php-fpm,error_php-fpm,slow_php-fpm}.log
+			sudo -u $NEW_USER -g $HOSTING_GROUP	touch $WWW_DIR/log/{access,error,access_php-fpm,error_php-fpm,slow_php-fpm}.log
 }
 
 function createUser {
 	echo Creating user "$1" and site dir
 	useradd -c "created `date +'%Y-%m-%d'`" -m "$1"
-	echo Add nginx user www-data to "$1" group to allow nginx to read user dir
-	usermod -a -G "$1" www-data
 }
 
 function removeUser {
@@ -188,22 +189,26 @@ function createConfFiles {
 }
 
 function deployWordpress {
-	sudo -u $NEW_USER wp core download --path=$WWW_DIR/web
+	echo Deploy Wordpress
 
-	sudo -u $NEW_USER wp config create --path=$WWW_DIR/web \
+	sudo -u $NEW_USER -g $HOSTING_GROUP wp core download --path=$WWW_DIR/web
+
+	sudo -u $NEW_USER -g $HOSTING_GROUP wp config create --path=$WWW_DIR/web \
 		--dbname=$MYSQL_DB \
 		--dbuser=$MYSQL_USER \
 		--dbpass=$MYSQL_PASS \
 		--dbprefix=$WP_TABLE_PREFIX
 
-	sudo -u $NEW_USER wp core install --path=$WWW_DIR/web \
+	sudo -u $NEW_USER -g $HOSTING_GROUP wp core install --path=$WWW_DIR/web \
 		 --url=$SITE_URL \
 		 --title="$SITE_NAME" \
-		 --admin_user=$WP_ADMIN_USER \
- 		 --admin_email=$WP_ADMIN_EMAIL
+		 --admin_user="$WP_ADMIN_USER" \
+ 		 --admin_email="$WP_ADMIN_EMAIL" \
+	   --admin_password="$WP_ADMIN_PASSWORD"
 
-	echo WP Admin User: $WP_ADMIN_USER
-	echo WP Admin Email: $WP_ADMIN_EMAIL
+	 sudo -u $NEW_USER -g $HOSTING_GROUP wp --path=$WWW_DIR/web option update timezone_string "$WP_TIMEZONE"
+
+
 }
 
 function reloadServices {
@@ -218,7 +223,7 @@ function deployTheme {
 
 function deployChildTheme {
 	mkdir $CHILD_THEME_DIR
-	chown $NEW_USER:$NEW_USER $CHILD_THEME_DIR
+	chown $NEW_USER:$HOSTING_GROUP $CHILD_THEME_DIR
 
 cat > $CHILD_THEME_DIR/style.css <<- ENDOFSTYLES
 /*
@@ -260,13 +265,17 @@ function setPermsOnSiteDirs {
         exit 1
     fi
 
-	chown -R $NEW_USER:$NEW_USER "$WWW_DIR"
+	  chown -R $NEW_USER:$HOSTING_GROUP "$WWW_DIR"
 
     # drwxr_x___
     # frw_r_____
 
     find "$WWW_DIR" -type d -exec chmod 750 {} \;
     find "$WWW_DIR" -type f -exec chmod 640 {} \;
+
+		# allow only read by PHP-FPM
+	  chmod 400 $WWW_DIR/web/wp-config.php
+
 }
 
 if [ "$(id -u)" -ne 0 ]; then
@@ -324,9 +333,9 @@ checkFile $NEW_PHPFPM_CONF
 
 createConfFiles
 
-setPermsOnSiteDirs
-
 deployWordpress
+
+setPermsOnSiteDirs
 
 # don't use this now
 # deployTheme
@@ -334,3 +343,13 @@ deployWordpress
 
 reloadServices
 
+echo "Securely save the following:"
+echo Linux user: $NEW_USER
+echo Domain: $NEW_DOMAIN
+echo Site name: $SITE_NAME
+echo WP Table Prefix: $WP_TABLE_PREFIX
+echo WP Admin User: $WP_ADMIN_USER
+echo WP Admin Email: $WP_ADMIN_EMAIL
+echo WP Admin Password: $WP_ADMIN_PASSWORD
+echo "MySQL DB Username:   $MYSQL_USER"
+echo "MySQL DB Password:   $MYSQL_PASS"
