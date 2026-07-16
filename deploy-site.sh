@@ -15,7 +15,7 @@ function createWebRoot {
 	mkdir -p $WWW_DIR/{tmp,uploads,web,log}
 
 	echo -e "This file needs to be here to enable\nnightly backup do not delete" > $WWW_DIR/backup
-  echo Changing owner of $WWW_DIR to $NEW_USER:$HOSTING_GROUP
+        echo Changing owner of $WWW_DIR to $NEW_USER:$HOSTING_GROUP
 	chown $NEW_USER:$HOSTING_GROUP $WWW_DIR -R 
 }
 
@@ -172,7 +172,7 @@ function createLogRotateConf {
 
 function createPhpFpmConf {
     echo Creating php-fpm conf for $NEW_USER
-    envsubst '$NEW_USER' < "$PHPFPM_CONF_TEMPLATE" > "$NEW_PHPFPM_CONF"
+    envsubst '$NEW_USER $HOSTING_GROUP' < "$PHPFPM_CONF_TEMPLATE" > "$NEW_PHPFPM_CONF"
 }
 
 function createNginxConf {

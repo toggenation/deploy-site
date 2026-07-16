@@ -1,20 +1,22 @@
 #!/bin/bash
 
-groupdel -f hosting
-userdel -r site1
+. ./.env
 
-groupadd hosting
-useradd -m -g hosting -k /dev/null site1
+groupdel -f $HOSTING_GROUP
+userdel -r $NEW_USER
 
-# apt update
-# apt dist-upgrade -y
+groupadd $HOSTING_GROUP
+useradd -m -g $HOSTING_GROUP -k /dev/null $NEW_USER
+
+apt update
+apt dist-upgrade -y
 
 apt install nginx -y
 
-usermod -aG hosting www-data
-usermod -aG hosting ja
+usermod -aG $HOSTING_GROUP www-data
+usermod -aG $HOSTING_GROUP ja
 
-apt install zip unzip curl php-fpm php php-cli php-{zip,bz2,curl,mbstring,intl,xml,sqlite3,mysql} -y
+apt install zip unzip curl php-fpm php php-cli php-{zip,bz2,curl,mbstring,intl,xml,sqlite3,mysql,imagick} -y
 
 apt install mariadb-server
 
