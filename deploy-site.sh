@@ -27,7 +27,7 @@ function createLogFiles {
 
 function createUser {
 	echo Creating user "$1" and site dir
-	useradd -c "created `date +'%Y-%m-%d'`" -m "$1"
+	useradd -g hosting -k /dev/null -c "created `date +'%Y-%m-%d'`" -m "$1"
 }
 
 function removeUser {
@@ -167,7 +167,7 @@ function checkUser {
 
 function createLogRotateConf {
 	echo Creating $NEW_LOGROTATE_CONF
-	envsubst '$NEW_USER $PHP_VERSION' < $LOGROTATE_CONF_TEMPLATE > $NEW_LOGROTATE_CONF
+	envsubst '$NEW_USER $PHP_VERSION $WWW_DIR $HOSTING_GROUP' < $LOGROTATE_CONF_TEMPLATE > $NEW_LOGROTATE_CONF
 }
 
 function createPhpFpmConf {
@@ -190,7 +190,6 @@ function createConfFiles {
 
 function deployWordpress {
 	echo Deploy Wordpress
-
 	sudo -u $NEW_USER -g $HOSTING_GROUP wp core download --path=$WWW_DIR/web
 
 	sudo -u $NEW_USER -g $HOSTING_GROUP wp config create --path=$WWW_DIR/web \
@@ -199,16 +198,22 @@ function deployWordpress {
 		--dbpass=$MYSQL_PASS \
 		--dbprefix=$WP_TABLE_PREFIX
 
+	sudo -u $NEW_USER -g $HOSTING_GROUP wp --path=$WWW_DIR/web config set WP_HOME "$SITE_URL"
+     	
+	sudo -u $NEW_USER -g $HOSTING_GROUP wp --path=$WWW_DIR/web config set WP_SITEURL "$SITE_URL"
+
 	sudo -u $NEW_USER -g $HOSTING_GROUP wp core install --path=$WWW_DIR/web \
 		 --url=$SITE_URL \
 		 --title="$SITE_NAME" \
 		 --admin_user="$WP_ADMIN_USER" \
  		 --admin_email="$WP_ADMIN_EMAIL" \
-	   --admin_password="$WP_ADMIN_PASSWORD"
+	  	 --admin_password="$WP_ADMIN_PASSWORD" \
+		 --skip-email
+
 
 	 sudo -u $NEW_USER -g $HOSTING_GROUP wp --path=$WWW_DIR/web option update timezone_string "$WP_TIMEZONE"
-
-
+        
+	 sudo -u $NEW_USER -g $HOSTING_GROUP wp --path=$WWW_DIR/web cli cache clear 
 }
 
 function reloadServices {
@@ -292,7 +297,8 @@ fi
 
 if [ ! -d /etc/letsencrypt/live/$NEW_DOMAIN ];
 then
-       	getCert
+       	echo Skipping cert creation
+	# getCert
 fi
 
 if [ "$1" = "remove" ];
