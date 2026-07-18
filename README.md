@@ -28,16 +28,16 @@ This script deploys a Wordpress site with the following
 ## How to use
 
 ```sh
-cp env.example env
+cp env.example .env
 ```
 
-Edit env and add the linux user and website domain
+Edit `.env` and add the linux user and website domain
 
 ```sh
 SITE_NAME="My Test Wordpress Site"
 
 # new user name linux
-NEW_USER=exuser
+NEW_USER=linuxuser
 
 # domain name
 NEW_DOMAIN=exampledomain.com.au
