@@ -43,12 +43,13 @@ NEW_USER=linuxuser
 
 # domain name
 NEW_DOMAIN=exampledomain.com.au
+
+MYSQL_PWD="MySuperSecretMariaDbRootPasswordHere" # mysql root password here
 ```
 
 Run the script 
 
 ```sh
-export MYSQL_PWD=MySuperSecretMySQLRootPassord
 ./deploy-site.sh
 ```
 
