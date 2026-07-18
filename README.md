@@ -3,19 +3,18 @@
 This script deploys a Wordpress site with the following
 
 * Adds a linux user so php-fpm can run as a user
-* Create /var/www/username/ folder tree
+* Create /var/www/username/ web hosting folder tree
 * Set permissions so that other users cannot read them and nginx only has readonly access
-* Copies an nginx conf template to /etc/nginx/conf.d and modifies it
-* Copies a template php-fpm.conf to /etc/php-fpm.d/ and modifies it
+* Copies an nginx conf template to /etc/nginx/sites-available/ and configures it to run as the linux user
+* Copies a template php-fpm.conf to /etc/php-fpm.d/ and configures it
 * Create a logrotate configuration to manage website logs
 * uses certbot to create a letsencrypt SSL cert using --nginx plugin
-* Adds the Divi theme to wordpress
-* Create a Divi Child Theme
-* Create a MySQL DB and user
+* Create a Maria / MySQL DB and user
 * Downloads and unpacks to the web root the latest wordpress
 * Modifies the Wordpress wp-config.php with:
 	* Database user details
 	* wp-config security salts
+ * Echos DB and WP credentials to console to take a copy of
 
 ## Requires
 
