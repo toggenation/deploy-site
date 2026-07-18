@@ -29,6 +29,8 @@ This script deploys a Wordpress site with the following
 
 ```sh
 cp env.example .env
+# make it more secure
+chmod 600 .env
 ```
 
 Edit `.env` and add the linux user and website domain
