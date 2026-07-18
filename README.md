@@ -2,7 +2,7 @@
 
 This script deploys a Wordpress site with the following
 
-* Adds a Linux user so `php-fpm` can run privilege separated and the website is isolated from others
+* Adds a Linux user so `php-fpm` can run privilege separated and the website files cannot be accessed by other websites
 * Create /var/www/username/ web hosting folder tree
 * Set permissions so that other users cannot read them and nginx only has readonly access
 * Copies an nginx conf template to /etc/nginx/sites-available/ and configures it to run as the linux user
